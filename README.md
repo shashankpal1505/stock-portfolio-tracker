@@ -1,5 +1,5 @@
 # stock-portfolio-tracker
-A real-time stock P&L and Target price calculator built with Python, yfinance and tkinter.
+A real-time stock P&L and Target price calculator built with Python, yfinance and tkinter. For traders is very good since they do frequent trades.
 User Input --
 Stocks Symbol defined in NSE which are mostly normal stocks name other we can find on internet easily.
 Number of stocks.
