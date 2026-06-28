@@ -1,129 +1,78 @@
 import logging
-import tkinter as tk
-from tkinter import messagebox
+import streamlit as strimlit  # Imported as 'strimlit' per your exact spelling
 import yfinance as yf
 
+# Suppress yfinance internal logger noise
 logger = logging.getLogger("yfinance")
 logger.disabled = True
 logger.propagate = False
 
+# --- 1. Page Configuration & Header ---
+strimlit.set_page_config(page_title="Live Stock P&L Calculator", page_icon="📈")
+strimlit.title("📈 Live Stock P&L Calculator")
+strimlit.markdown("---")
 
-# --- 1. The Core Logic ---
-def calculate_pl():
-    # Grab the data the user typed into the text boxes
-    symbol = symbol_entry.get().upper().strip()
-    if symbol and not "." in symbol:
-        symbol = f"{symbol}.NS"
+# --- 2. Building the Web GUI Input Fields ---
+symbol_input = strimlit.text_input("Stock Symbol (e.g., RELIANCE):", value="").strip()
+buy_price_input = strimlit.text_input("Average Buy Price/ Target Price (₹):", value="")
+quantity_input = strimlit.text_input("Quantity of Shares:", value="")
 
-    try:
-        buy_price = float(buy_price_entry.get())
-        quantity = int(quantity_entry.get())
-    except ValueError:
-        messagebox.showerror(
-            "Input Error", "Please enter valid numbers for price and quantity."
-        )
-        return
+# --- 3. The Core Logic Execution ---
+if strimlit.button("Calculate Live P&L", type="primary"):
+    
+    # Validation 1: Check if inputs are filled
+    if not symbol_input or not buy_price_input or not quantity_input:
+        strimlit.error("⚠️ Please fill in all fields before calculating.")
+    else:
+        # Format the symbol for Indian Markets if suffix is missing
+        symbol = symbol_input.upper()
+        if symbol and "." not in symbol:
+            symbol = f"{symbol}.NS"
 
-    try:
-        
-        result_label.config(text="Fetching live data...", fg="blue")
-        app.update()
+        # Validation 2: Ensure numbers are valid numerical values
+        try:
+            buy_price = float(buy_price_input)
+            quantity = int(quantity_input)
+        except ValueError:
+            strimlit.error("❌ Input Error: Please enter valid numbers for price and quantity.")
+            symbol = None  # Prevent further execution
 
-        def calc(live_data):
-            # Calculate Profit / Loss
-            total_invested = buy_price * quantity
-            latest_price = live_data["Close"].iloc[-1]
-            current_value = latest_price * quantity
-            profit_loss = current_value - total_invested
-            pl_percentage = (profit_loss / current_value) * 100
+        if symbol:
+            with strimlit.spinner("Fetching live data from Yahoo Finance..."):
+                try:
+                    # Fetch the latest price using yfinance
+                    stock = yf.Ticker(symbol)
+                    live_data = stock.history(period="1d", interval="1m")
 
-            # Format the result text
-            if profit_loss >= 0:
-                color = "green"
-                status = "PROFIT"
-            else:
-                color = "red"
-                status = "LOSS"
-            if current_value < total_invested:
-                result_text = (
-                f"Current Price: ₹{latest_price:.2f}\n"
-                f"Total Invested: ₹{total_invested:.2f}\n"
-                f"Current Value: ₹{current_value:.2f}\n"
-                f"Target has to achieve: ₹{abs(profit_loss):.2f} ({pl_percentage:.2f}%)"
-            )
-                result_label.config(text=result_text, fg=color)
-            else:
-                result_text = (
-                    f"Current Price: ₹{latest_price:.2f}\n"
-                    f"Total Invested: ₹{total_invested:.2f}\n"
-                    f"Current Value: ₹{current_value:.2f}\n"
-                    f"Total {status}: ₹{abs(profit_loss):.2f} ({pl_percentage:.2f}%)"
-                )
-                result_label.config(text=result_text, fg=color)
+                    # Fallback lookup if 1d data interval is empty
+                    if live_data.empty:
+                        live_data = stock.history(period="5d", interval="1m")
 
-        # Fetch the latest price using yfinance
-        stock = yf.Ticker(symbol)
-        live_data = stock.history(period="1d", interval="1m")
+                    if not live_data.empty:
+                        # Calculate Profit / Loss
+                        total_invested = buy_price * quantity
+                        latest_price = live_data["Close"].iloc[-1]
+                        current_value = latest_price * quantity
+                        profit_loss = current_value - total_invested
+                        pl_percentage = (profit_loss / current_value) * 100
 
-        if not live_data.empty:
-            calc(live_data)
-        else:
-            live_data = stock.history(period="5d", interval="1m")
-            if not live_data.empty:
-                calc(live_data)
-            else:
-               
-                messagebox.showerror(
-                    "Stock Not Found",
-                    f"Please check the symbol or stock may be delisted.\nCould not find data for {symbol}.",
-                )
-                result_label.config(text="Ready", fg="black")
-                return
+                        # Format results into distinct metric strings
+                        metrics_html = f"""
+                        **Current Price:** ₹{latest_price:.2f}  
+                        **Total Invested:** ₹{total_invested:.2f}  
+                        **Current Value:** ₹{current_value:.2f}  
+                        """
+                        
+                        # Display output with contextual color treatments
+                        if current_value < total_invested:
+                            strimlit.markdown(metrics_html)
+                            strimlit.error(f"📉 **Target has to achieve:** ₹{abs(profit_loss):.2f} ({pl_percentage:.2f}%)")
+                        else:
+                            strimlit.markdown(metrics_html)
+                            strimlit.success(f"📈 **Total PROFIT:** ₹{abs(profit_loss):.2f} ({pl_percentage:.2f}%)")
 
-        
+                    else:
+                        strimlit.error(f"🔍 Stock Not Found: Please check the symbol or stock may be delisted. Could not find data for {symbol}.")
 
-    except Exception as e:
-        messagebox.showerror("Error", f"An unexpected error occurred: {e}")
-        result_label.config(text="Ready", fg="black")
-
-
-# --- 2. Building the Windows GUI ---
-app = tk.Tk()
-app.title("Live Stock P&L Calculator")
-app.geometry("350x420")
-app.configure(padx=20, pady=20)
-
-# Symbol Input
-tk.Label(app, text="Stock Symbol (e.g., RELIANCE):").pack(anchor="w")
-symbol_entry = tk.Entry(app, font=("Arial", 12), width=30)
-symbol_entry.pack(pady=5)
-
-# Buy Price Input
-tk.Label(app, text="Average Buy Price/ Target Price (₹):").pack(anchor="w")
-buy_price_entry = tk.Entry(app, font=("Arial", 12), width=30)
-buy_price_entry.pack(pady=5)
-
-# Quantity Input
-tk.Label(app, text="Quantity of Shares:").pack(anchor="w")
-quantity_entry = tk.Entry(app, font=("Arial", 12), width=30)
-quantity_entry.pack(pady=5)
-
-# Calculate Button
-calc_button = tk.Button(
-    app,
-    text="Calculate Live P&L",
-    font=("Arial", 12, "bold"),
-    bg="#4CAF50",
-    fg="white",
-    command=calculate_pl,
-)
-calc_button.pack(pady=20, fill="x")
-
-# Result Display Area
-result_label = tk.Label(
-    app, text="Enter details and click Calculate", font=("Arial", 12), justify="left"
-)
-result_label.pack(pady=10)
-
-# --- 3. Run the Application ---
-app.mainloop()
+                except Exception as e:
+                    strimlit.error(f"💥 An unexpected error occurred: {e}")
